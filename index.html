@@ -39,11 +39,11 @@
   #wordmark .l2{font-weight:600;font-size:22px;letter-spacing:.18em;color:var(--ink-3);}
   #wordmark .dot{color:var(--accent);}
 
-  /* ---------- top-right controls ---------- */
-  #topbar{position:absolute;top:calc(10px + var(--safe-t));right:12px;z-index:20;display:flex;gap:8px;align-items:flex-start;}
-  .chip{height:38px;min-width:38px;padding:0 12px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+  /* ---------- quick controls — docked bottom-left for one-handed thumb reach ---------- */
+  #topbar{position:absolute;left:12px;bottom:calc(14px + var(--safe-b));z-index:21;display:flex;flex-direction:column-reverse;gap:8px;align-items:flex-start;}
+  .chip{height:var(--tap);min-width:var(--tap);padding:0 12px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
         display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px;font-weight:600;color:var(--ink-2);
-        letter-spacing:.03em;box-shadow:0 1px 2px rgba(0,0,0,.03);cursor:pointer;}
+        letter-spacing:.03em;box-shadow:0 1px 4px rgba(0,0,0,.06);cursor:pointer;}
   .chip .v{color:var(--ink);font-weight:700;}
   .chip.on{border-color:var(--accent);color:var(--accent);}
   .chip.on .v{color:var(--accent);}
@@ -84,7 +84,7 @@
   /* ---------- PLACE ROW floating affordance ---------- */
   #placerow{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(150px + var(--safe-b));z-index:26;display:none;}
   #placerow.show{display:block;}
-  #placerow button{height:42px;padding:0 18px;background:var(--accent);color:#fff;border:none;border-radius:21px;
+  #placerow button{height:48px;padding:0 22px;background:var(--accent);color:#fff;border:none;border-radius:24px;
         font-family:inherit;font-weight:700;font-size:12px;letter-spacing:.08em;box-shadow:0 4px 14px rgba(255,85,0,.35);cursor:pointer;
         display:flex;align-items:center;gap:8px;}
   #placerow .cnt{background:rgba(255,255,255,.25);border-radius:10px;padding:1px 8px;font-size:11px;}
@@ -108,7 +108,8 @@
   .phead h2{font-size:15px;font-weight:700;letter-spacing:.06em;}
   .phead .x{width:34px;height:34px;border:1px solid var(--line);border-radius:8px;background:var(--panel);display:flex;align-items:center;
             justify-content:center;font-size:17px;color:var(--ink-2);cursor:pointer;}
-  .pbody{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 18px 20px;}
+  .pbody{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 18px 0;}
+  .sticky-action{position:sticky;bottom:0;background:linear-gradient(to top,var(--panel) 70%,rgba(255,255,255,0));padding:14px 0 18px;margin-top:8px;}
 
   /* catalog */
   .group-label{font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--ink-3);margin:14px 2px 7px;}
@@ -187,7 +188,7 @@
         font-family:inherit;font-weight:700;font-size:12px;letter-spacing:.06em;cursor:pointer;}
 
   /* footer signature */
-  #sig{position:absolute;left:14px;bottom:calc(20px + var(--safe-b));z-index:5;font-size:9px;font-weight:600;letter-spacing:.32em;
+  #sig{position:absolute;right:14px;bottom:calc(20px + var(--safe-b));z-index:5;font-size:9px;font-weight:600;letter-spacing:.32em;
        color:var(--ink);opacity:.16;pointer-events:none;}
 
   @media (max-width:380px){
@@ -256,7 +257,7 @@
       <div id="catList"></div>
       <div class="group-label" style="margin-top:18px">LENGTH</div>
       <div class="lenrow" id="lenList"></div>
-      <button class="addnow" id="addNow">ADD TO SCENE</button>
+      <div class="sticky-action"><button class="addnow" id="addNow">ADD TO SCENE</button></div>
     </div>
   </div>
 </div>
