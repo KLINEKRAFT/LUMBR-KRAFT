@@ -67,9 +67,9 @@
   .axislabel{font-size:10px;color:var(--ink-3);font-weight:600;letter-spacing:.1em;align-self:center;margin-right:2px;}
 
   /* ---------- bottom toolbar ---------- */
-  #toolbar{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(12px + var(--safe-b));z-index:20;
+  #toolbar{position:absolute;right:12px;bottom:calc(12px + var(--safe-b));z-index:20;
            display:flex;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:6px;
-           box-shadow:0 4px 18px rgba(0,0,0,.08);}
+           box-shadow:0 4px 18px rgba(0,0,0,.08);max-width:calc(100% - 24px);overflow-x:auto;}
   .tbtn{height:var(--tap);min-width:58px;padding:0 12px;border:none;background:transparent;border-radius:9px;
         font-family:inherit;font-size:11px;font-weight:600;color:var(--ink-2);letter-spacing:.05em;
         display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;}
@@ -564,16 +564,38 @@ function dragPlaneFor(b){
 }
 function planeHit(plane){ const pt=new THREE.Vector3(); return raycaster.ray.intersectPlane(plane,pt)?pt:null; }
 
+/* ---------- one-handed zoom (double-tap, then slide up/down) ---------- */
+let lastTap=null;        // {t,x,y} of a clean empty-space tap
+let zoomDrag=null;       // {lastY, moved} while double-tap-sliding
+let tapCand=null;        // {empty,x,y,moved} for current pointer
+function camDist(){ return camera.position.distanceTo(controls.target); }
+function setCamDist(d){
+  d=THREE.MathUtils.clamp(d, controls.minDistance, controls.maxDistance);
+  const dir=new THREE.Vector3().subVectors(camera.position,controls.target).normalize();
+  camera.position.copy(controls.target).addScaledVector(dir,d);
+}
+
 renderer.domElement.addEventListener('pointerdown', e=>{
   pointers.set(e.pointerId,e);
-  if(pointers.size>=2){ // two-finger -> camera; abort any board drag
-    if(drag){ drag=null; controls.enabled=true; }
+  if(pointers.size>=2){ // two-finger -> camera; abort board drag & zoom
+    if(drag){ drag=null; } if(zoomDrag){ zoomDrag=null; }
     controls.enabled=true; return;
   }
   setNDC(e);
+  const gi = state.ghosts ? hitGhost() : null;
+  const id = gi===null ? hitBoards() : null;
+  const overEmpty = gi===null && id===null;
+
+  // double-tap on empty space -> enter one-finger zoom
+  const now=performance.now();
+  if(overEmpty && lastTap && (now-lastTap.t)<320 && Math.hypot(e.clientX-lastTap.x,e.clientY-lastTap.y)<36){
+    zoomDrag={lastY:e.clientY, moved:false};
+    controls.enabled=false; lastTap=null; tapCand=null; return;
+  }
+  tapCand={empty:overEmpty, x:e.clientX, y:e.clientY, moved:false};
+
   // ghost first
-  if(state.ghosts){ const gi=hitGhost(); if(gi!==null){ confirmGhost(gi); return; } }
-  const id=hitBoards();
+  if(gi!==null){ confirmGhost(gi); return; }
   if(id!==null){
     const b=boardById(id);
     select(id);
@@ -591,6 +613,14 @@ renderer.domElement.addEventListener('pointerdown', e=>{
 renderer.domElement.addEventListener('pointermove', e=>{
   if(!pointers.has(e.pointerId))return;
   pointers.set(e.pointerId,e);
+  // one-finger zoom slide
+  if(zoomDrag && pointers.size===1){
+    const d=e.clientY-zoomDrag.lastY; zoomDrag.lastY=e.clientY;
+    if(Math.abs(d)>1.2) zoomDrag.moved=true;
+    setCamDist(camDist()*(1+d*0.0055)); // slide down = zoom out, up = zoom in
+    return;
+  }
+  if(tapCand && Math.hypot(e.clientX-tapCand.x,e.clientY-tapCand.y)>6) tapCand.moved=true;
   if(!drag||pointers.size>1)return;
   setNDC(e);
   const cur=planeHit(drag.plane); if(!cur||!drag.p0)return;
@@ -614,10 +644,19 @@ renderer.domElement.addEventListener('pointermove', e=>{
 
 function endPointer(e){
   pointers.delete(e.pointerId);
+  if(zoomDrag){
+    if(!zoomDrag.moved) setCamDist(camDist()*0.62); // clean double-tap = step zoom in
+    zoomDrag=null;
+    if(pointers.size===0) controls.enabled=true;
+    tapCand=null; return;
+  }
   if(drag){
     if(drag.moved){ snapshotIfChanged(drag.startPos,drag.b); save(); updateGhostFrom(drag.b); }
     drag=null;
   }
+  // record a clean empty-space tap to seed double-tap zoom
+  if(tapCand && tapCand.empty && !tapCand.moved){ lastTap={t:performance.now(), x:tapCand.x, y:tapCand.y}; }
+  tapCand=null;
   if(pointers.size===0) controls.enabled=true;
   setSelectedVisual();
 }
@@ -679,92 +718,103 @@ function makeGhostMesh(g, idx, opacity){
 function updateGhost(){ clearGhosts(); if(!state.ghosts) return; const b=boardById(state.selectedId)||state.boards[state.boards.length-1]; if(b) buildPrediction(b); }
 function updateGhostFrom(b){ clearGhosts(); if(!state.ghosts) return; buildPrediction(b); }
 
+function plateAxis(p){ return Math.abs(longAxisWorld(p).x)>0.7?'x':'z'; }
+function boxOf(b){ if(!b._box) b._box=new THREE.Box3().setFromObject(meshes.get(b.id)); return b._box; }
+function studSkuFor(plate){ return plate.sku.startsWith('2')?'2x4':(plate.sku.startsWith('4')?'2x4':plate.sku); }
+const STUD_LEN=92.625; // pre-cut stud for an 8' wall
+
+// Build the framing context around a bottom plate: which studs stand on it, where, and whether a top plate exists.
+function wallContext(plate){
+  const axis=plateAxis(plate), other=axis==='x'?'z':'x';
+  const pb=boxOf(plate);
+  const plateTop=pb.max.y;
+  const studs=state.boards.filter(s=>{
+    if(!isStud(s)) return false;
+    const sb=boxOf(s);
+    const baseOnTop=Math.abs(sb.min.y-plateTop)<2.5;
+    const alongPlate=s.pos[axis]>=pb.min[axis]-2 && s.pos[axis]<=pb.max[axis]+2;
+    const onCenterline=Math.abs(s.pos[other]-plate.pos[other])<(CATALOG[plate.sku].w/2+2);
+    return baseOnTop&&alongPlate&&onCenterline;
+  }).sort((a,b)=>a.pos[axis]-b.pos[axis]);
+  // top plate: a plate sitting on the stud tops
+  let topPlate=null, studTopY=null;
+  if(studs.length){ studTopY=boxOf(studs[0]).max.y;
+    topPlate=state.boards.find(p=>p.id!==plate.id && isPlate(p) && plateAxis(p)===axis
+      && Math.abs(boxOf(p).min.y-studTopY)<2.5
+      && Math.abs(p.pos[other]-plate.pos[other])<CATALOG[plate.sku].w);
+  }
+  return {axis,other,pb,plateTop,studs,topPlate,studTopY};
+}
+
+function studGhost(plate,ctx,posAlong){
+  const rot = ctx.axis==='x' ? {x:0,y:0,z:90} : {x:90,y:0,z:0};
+  const len = ctx.studs.length?ctx.studs[0].len:STUD_LEN;
+  const pos={x:plate.pos.x,y:ctx.plateTop+len/2,z:plate.pos.z}; pos[ctx.axis]=posAlong;
+  return {sku:studSkuFor(plate),len,species:plate.species,pos,rot};
+}
+
 function buildPrediction(b){
   if(!b) return;
-  const c=CATALOG[b.sku];
+  const plate = isPlate(b) ? b : findPlateBelowStud(b);
+  if(plate && CATALOG[plate.sku]){
+    const ctx=wallContext(plate);
+    const sc=CATALOG[studSkuFor(plate)];
+    const startEdge=ctx.pb.min[ctx.axis]+sc.w/2+0.75;
+    const farEnd=ctx.pb.max[ctx.axis]-sc.w/2-0.75;
 
-  // --- RULE 1: stud run. If >=2 recent studs same sku evenly spaced, continue the run. ---
-  const studs=state.boards.filter(x=>isStud(x)&&x.sku===b.sku);
-  if(isStud(b) && studs.length>=2){
-    // find another stud sharing the run line (same Z or same X, same Y base)
-    const last=b;
-    let partner=null, axis=null;
-    for(const s of studs){
-      if(s.id===last.id) continue;
-      if(Math.abs(s.pos.y-last.pos.y)<1){
-        if(Math.abs(s.pos.z-last.pos.z)<1 && Math.abs(s.pos.x-last.pos.x)>1){ partner=s; axis='x'; }
-        else if(Math.abs(s.pos.x-last.pos.x)<1 && Math.abs(s.pos.z-last.pos.z)>1){ partner=s; axis='z'; }
-      }
-      if(partner) break;
+    // (1) no studs yet -> first stud at the start end
+    if(ctx.studs.length===0){
+      const g=studGhost(plate,ctx,startEdge);
+      ghostPlan={boards:[g],kind:'firststud'}; makeGhostMesh(g,0,0.42); return;
     }
-    if(partner && axis){
-      let step=last.pos[axis]-partner.pos[axis];
-      if(Math.abs(step)<0.1) step=state.oc;
-      // direction continues away from partner
-      const dir=Math.sign(step)||1;
-      const ghosts=[]; let pos={...last.pos};
-      // figure how far the run can go: bounded by a plate under the studs, else 6 steps
-      let limit=last.pos[axis]+dir*Math.abs(step)*8;
-      const plate=findPlateUnder(last,axis);
-      if(plate){ const pb=plate._box||new THREE.Box3().setFromObject(meshes.get(plate.id)); limit = dir>0?pb.max[axis]-c.w/2 : pb.min[axis]+c.w/2; }
-      let next=last.pos[axis]+dir*Math.abs(step); let guard=0;
-      while(((dir>0&&next<=limit+0.01)||(dir<0&&next>=limit-0.01)) && guard<20){
-        const gp={...last.pos}; gp[axis]=next;
-        ghosts.push({sku:last.sku,len:last.len,species:last.species,pos:gp,rot:{...last.rot}});
-        next+=dir*Math.abs(step); guard++;
-      }
-      if(ghosts.length){
-        ghostPlan={boards:ghosts, kind:'run', oc:Math.abs(step)};
-        makeGhostMesh(ghosts[0],0,0.42);
-        for(let i=1;i<ghosts.length;i++) makeGhostMesh(ghosts[i],i,0.14);
-        if(ghosts.length>1){ document.getElementById('rowCnt').textContent=ghosts.length; document.getElementById('placerow').classList.add('show'); }
-        return;
-      }
+
+    // (2) OC run: fill every missing on-center position from the anchor to the far end (covers march, fill, corner)
+    const anchor=ctx.studs[0].pos[ctx.axis];
+    const have=ctx.studs.map(s=>s.pos[ctx.axis]);
+    const wanted=[];
+    for(let p=anchor; p<=farEnd+0.01; p+=state.oc) wanted.push(p);
+    if(farEnd-(wanted[wanted.length-1])>sc.w) wanted.push(farEnd); // ensure an end stud closes the wall
+    const missing=wanted.filter(p=>!have.some(h=>Math.abs(h-p)<state.oc*0.45));
+    if(missing.length){
+      const ghosts=missing.map(p=>studGhost(plate,ctx,p));
+      ghostPlan={boards:ghosts,kind:'run',oc:state.oc};
+      makeGhostMesh(ghosts[0],0,0.42);
+      for(let i=1;i<ghosts.length;i++) makeGhostMesh(ghosts[i],i,0.14);
+      if(ghosts.length>1){ document.getElementById('rowCnt').textContent=ghosts.length; document.getElementById('placerow').classList.add('show'); }
+      return;
     }
+
+    // (3) studs complete, no top plate -> ghost the top plate across the stud tops
+    if(ctx.studs.length>=2 && !ctx.topPlate){
+      const len=plate.len;
+      const g={sku:plate.sku,len,species:plate.species,
+        pos:{x:plate.pos.x,y:ctx.studTopY+CATALOG[plate.sku].t/2,z:plate.pos.z}, rot:{...plate.rot}};
+      ghostPlan={boards:[g],kind:'topplate'}; makeGhostMesh(g,0,0.42); return;
+    }
+    return; // wall framed
   }
 
-  // --- RULE 2: plate -> stud at the start end, standing on top ---
-  if(isPlate(b)){
-    const axis=Math.abs(longAxisWorld(b).x)>0.7?'x':'z';
-    const box=b._box||new THREE.Box3().setFromObject(meshes.get(b.id));
-    const studSku=b.sku.startsWith('2')?'2x4':b.sku;
-    const sc=CATALOG[studSku];
-    const studLen=92.625; // common precut stud
-    // place stud standing (rotate plate's long axis to vertical): rot z=90 if plate along x
-    const rot = axis==='x' ? {x:0,y:0,z:90} : {x:90,y:0,z:0};
-    // stud sits on top of plate: base at top of plate
-    const topY=box.max.y;
-    const startEdge = b.pos[axis]-( (box.max[axis]-box.min[axis])/2 ) + sc.w/2 + 0.75;
-    const gp={x:b.pos.x,y:topY+studLen/2,z:b.pos.z};
-    gp[axis]=startEdge;
-    const g={sku:studSku,len:studLen,species:b.species,pos:gp,rot};
-    ghostPlan={boards:[g], kind:'firststud'};
-    makeGhostMesh(g,0,0.42);
-    return;
-  }
-
-  // --- RULE 3: stud (single) -> suggest a top or bottom plate spanning, OR mirror to start a run ---
+  // fallback: a lone stud with no plate -> suggest a sibling one OC over (starts a run)
   if(isStud(b)){
-    // suggest a sibling stud one OC step over (start a run)
-    const axisGuess='x';
     const g={sku:b.sku,len:b.len,species:b.species,pos:{x:b.pos.x+state.oc,y:b.pos.y,z:b.pos.z},rot:{...b.rot}};
-    ghostPlan={boards:[g], kind:'startrun'};
-    makeGhostMesh(g,0,0.4);
-    return;
+    ghostPlan={boards:[g],kind:'startrun'}; makeGhostMesh(g,0,0.4); return;
   }
 }
 
-function findPlateUnder(stud,axis){
-  const sb=stud._box||new THREE.Box3().setFromObject(meshes.get(stud.id));
+// find the bottom plate a stud is standing on (any horizontal long-axis board just below the stud's base)
+function findPlateBelowStud(stud){
+  if(!isStud(stud)) return null;
+  const sb=boxOf(stud);
+  let best=null;
   for(const p of state.boards){
-    if(!isPlate(p)) continue;
-    const pa=Math.abs(longAxisWorld(p).x)>0.7?'x':'z';
-    if(pa!==axis) continue;
-    const pb=p._box||new THREE.Box3().setFromObject(meshes.get(p.id));
-    if(pb.max.y<=sb.min.y+1.5 && pb.max.y>=sb.min.y-3 &&
-       pb.min[axis]-2<=sb.min[axis] && pb.max[axis]+2>=sb.max[axis]) return p;
+    if(p.id===stud.id||!isPlate(p)) continue;
+    const pb=boxOf(p); const axis=plateAxis(p); const other=axis==='x'?'z':'x';
+    const baseOnTop=Math.abs(pb.max.y-sb.min.y)<2.5;
+    const within=stud.pos[axis]>=pb.min[axis]-2 && stud.pos[axis]<=pb.max[axis]+2;
+    const centered=Math.abs(stud.pos[other]-p.pos[other])<CATALOG[p.sku].w;
+    if(baseOnTop&&within&&centered){ if(!best||pb.max.y>boxOf(best).max.y) best=p; }
   }
-  return null;
+  return best;
 }
 
 function confirmGhost(gi){
@@ -773,7 +823,8 @@ function confirmGhost(gi){
   snapshot();
   const b=freshBoard(g.sku,g.len,g.pos,g.rot); b.species=g.species;
   state.boards.push(b); makeMesh(b); select(b.id); save();
-  toast(ghostPlan.kind==='run'?'STUD PLACED · ON CENTER':'PLACED');
+  const labels={run:'STUD PLACED · ON CENTER', firststud:'STUD PLACED', topplate:'TOP PLATE PLACED', startrun:'STUD PLACED'};
+  toast(labels[ghostPlan.kind]||'PLACED');
   updateGhostFrom(b);
 }
 function placeWholeRow(){
@@ -1079,7 +1130,7 @@ animate();
 if(!state.boards.length){
   const b=freshBoard('2x4',96,{x:0,y:CATALOG['2x4'].t/2,z:0},{x:0,y:0,z:0});
   state.boards.push(b); makeMesh(b); save();
-  setTimeout(()=>{ toast('TAP THE GHOST TO PLACE THE NEXT PIECE'); select(b.id); updateGhostFrom(b); },600);
+  setTimeout(()=>{ toast('TAP THE GHOST TO PLACE · DOUBLE-TAP + SLIDE TO ZOOM'); select(b.id); updateGhostFrom(b); },600);
 }
 </script>
 </body>
