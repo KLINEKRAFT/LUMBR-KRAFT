@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f4f4f2">
+<title>LUMBR</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f4f4f2;          /* studio viewport */
+    --panel:#ffffff;
+    --panel-2:#fafafa;
+    --line:#e2e2de;
+    --line-2:#d2d2cc;
+    --ink:#1a1a18;
+    --ink-2:#6b6b66;
+    --ink-3:#9a9a94;
+    --accent:#ff5500;      /* signal orange — active/selected/snap/lock only */
+    --accent-soft:rgba(255,85,0,.12);
+    --r:10px;
+    --tap:46px;
+    --safe-b:env(safe-area-inset-bottom,0px);
+    --safe-t:env(safe-area-inset-top,0px);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;}
+  html,body{height:100%;overflow:hidden;background:var(--bg);font-family:'IBM Plex Sans',sans-serif;color:var(--ink);}
+  body{position:fixed;inset:0;font-variant-numeric:tabular-nums;}
+  #app{position:absolute;inset:0;}
+  canvas{display:block;touch-action:none;}
+
+  /* ---------- wordmark ---------- */
+  #wordmark{position:absolute;top:calc(12px + var(--safe-t));left:14px;z-index:20;line-height:.86;pointer-events:none;}
+  #wordmark .l1{font-weight:700;font-size:22px;letter-spacing:.04em;color:var(--ink);}
+  #wordmark .l2{font-weight:600;font-size:22px;letter-spacing:.18em;color:var(--ink-3);}
+  #wordmark .dot{color:var(--accent);}
+
+  /* ---------- top-right controls ---------- */
+  #topbar{position:absolute;top:calc(10px + var(--safe-t));right:12px;z-index:20;display:flex;gap:8px;align-items:flex-start;}
+  .chip{height:38px;min-width:38px;padding:0 12px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+        display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px;font-weight:600;color:var(--ink-2);
+        letter-spacing:.03em;box-shadow:0 1px 2px rgba(0,0,0,.03);cursor:pointer;}
+  .chip .v{color:var(--ink);font-weight:700;}
+  .chip.on{border-color:var(--accent);color:var(--accent);}
+  .chip.on .v{color:var(--accent);}
+
+  /* ---------- contextual selection bar ---------- */
+  #selbar{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(84px + var(--safe-b));z-index:25;
+          display:none;flex-direction:column;align-items:center;gap:8px;width:min(460px,calc(100% - 20px));}
+  #selbar.show{display:flex;}
+  #seldims{background:var(--ink);color:#fff;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;letter-spacing:.04em;
+           display:flex;gap:10px;align-items:center;}
+  #seldims .sku{color:var(--accent);font-weight:700;}
+  #seldims .len{cursor:pointer;border-bottom:1px dashed rgba(255,255,255,.4);}
+  #selactions{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;}
+  .sbtn{height:var(--tap);min-width:var(--tap);padding:0 14px;background:var(--panel);border:1px solid var(--line-2);border-radius:var(--r);
+        font-size:12px;font-weight:600;color:var(--ink);letter-spacing:.04em;display:flex;align-items:center;justify-content:center;gap:5px;
+        box-shadow:0 1px 3px rgba(0,0,0,.05);cursor:pointer;}
+  .sbtn:active{background:var(--panel-2);transform:translateY(1px);}
+  .sbtn.lock{font-weight:700;}
+  .sbtn.lock.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .sbtn.danger:active{background:#fff0eb;}
+  .axislabel{font-size:10px;color:var(--ink-3);font-weight:600;letter-spacing:.1em;align-self:center;margin-right:2px;}
+
+  /* ---------- bottom toolbar ---------- */
+  #toolbar{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(12px + var(--safe-b));z-index:20;
+           display:flex;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:6px;
+           box-shadow:0 4px 18px rgba(0,0,0,.08);}
+  .tbtn{height:var(--tap);min-width:58px;padding:0 12px;border:none;background:transparent;border-radius:9px;
+        font-family:inherit;font-size:11px;font-weight:600;color:var(--ink-2);letter-spacing:.05em;
+        display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;}
+  .tbtn .ico{width:22px;height:22px;}
+  .tbtn:active{background:var(--panel-2);}
+  .tbtn.primary{color:var(--accent);}
+  .tbtn.primary .ico *{stroke:var(--accent);}
+  .tbtn:disabled{opacity:.32;}
+  .tbtn .ico *{stroke:var(--ink-2);stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+  .tbtn.modeRot .ico *{stroke:var(--ink-2);}
+
+  /* ---------- PLACE ROW floating affordance ---------- */
+  #placerow{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(150px + var(--safe-b));z-index:26;display:none;}
+  #placerow.show{display:block;}
+  #placerow button{height:42px;padding:0 18px;background:var(--accent);color:#fff;border:none;border-radius:21px;
+        font-family:inherit;font-weight:700;font-size:12px;letter-spacing:.08em;box-shadow:0 4px 14px rgba(255,85,0,.35);cursor:pointer;
+        display:flex;align-items:center;gap:8px;}
+  #placerow .cnt{background:rgba(255,255,255,.25);border-radius:10px;padding:1px 8px;font-size:11px;}
+
+  /* hint toast */
+  #hint{position:absolute;left:50%;top:calc(58px + var(--safe-t));transform:translateX(-50%);z-index:18;
+        background:rgba(26,26,24,.9);color:#fff;font-size:12px;font-weight:500;letter-spacing:.02em;padding:7px 14px;border-radius:20px;
+        opacity:0;transition:opacity .25s;pointer-events:none;max-width:88%;text-align:center;}
+  #hint.show{opacity:1;}
+
+  /* ---------- sheets / modals ---------- */
+  .sheet{position:absolute;inset:0;z-index:40;display:none;}
+  .sheet.show{display:block;}
+  .scrim{position:absolute;inset:0;background:rgba(20,20,18,.32);backdrop-filter:blur(2px);}
+  .panel{position:absolute;left:0;right:0;bottom:0;max-height:86%;background:var(--panel);border-radius:18px 18px 0 0;
+         box-shadow:0 -8px 40px rgba(0,0,0,.18);display:flex;flex-direction:column;padding-bottom:var(--safe-b);
+         transform:translateY(100%);transition:transform .26s cubic-bezier(.22,1,.36,1);}
+  .sheet.show .panel{transform:translateY(0);}
+  .grab{width:38px;height:4px;border-radius:2px;background:var(--line-2);margin:10px auto 4px;}
+  .phead{display:flex;align-items:center;justify-content:space-between;padding:6px 18px 12px;border-bottom:1px solid var(--line);}
+  .phead h2{font-size:15px;font-weight:700;letter-spacing:.06em;}
+  .phead .x{width:34px;height:34px;border:1px solid var(--line);border-radius:8px;background:var(--panel);display:flex;align-items:center;
+            justify-content:center;font-size:17px;color:var(--ink-2);cursor:pointer;}
+  .pbody{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 18px 20px;}
+
+  /* catalog */
+  .group-label{font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--ink-3);margin:14px 2px 7px;}
+  .group-label:first-child{margin-top:2px;}
+  .catgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:8px;}
+  .cat{height:64px;border:1px solid var(--line-2);border-radius:10px;background:var(--panel-2);display:flex;flex-direction:column;
+       align-items:center;justify-content:center;gap:3px;cursor:pointer;}
+  .cat:active{background:#fff;}
+  .cat.sel{border-color:var(--accent);background:var(--accent-soft);}
+  .cat .nm{font-weight:700;font-size:15px;letter-spacing:.02em;}
+  .cat .ac{font-size:9.5px;color:var(--ink-3);font-weight:500;}
+  .cat.sel .nm{color:var(--accent);}
+  .lenrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;}
+  .len{flex:1;min-width:62px;height:46px;border:1px solid var(--line-2);border-radius:9px;background:var(--panel-2);font-family:inherit;
+       font-weight:700;font-size:14px;color:var(--ink);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+  .len .sub{font-size:9px;color:var(--ink-3);font-weight:500;}
+  .len.sel{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);}
+  .addnow{margin-top:16px;width:100%;height:52px;background:var(--accent);color:#fff;border:none;border-radius:12px;
+          font-family:inherit;font-weight:700;font-size:14px;letter-spacing:.08em;cursor:pointer;}
+  .addnow:active{filter:brightness(.95);}
+
+  /* cut list */
+  .cutsel{display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;}
+  .field{display:flex;flex-direction:column;gap:4px;}
+  .field label{font-size:9.5px;font-weight:700;letter-spacing:.1em;color:var(--ink-3);}
+  .field select,.field input{height:40px;border:1px solid var(--line-2);border-radius:8px;background:var(--panel-2);padding:0 10px;
+        font-family:inherit;font-size:13px;font-weight:600;color:var(--ink);min-width:70px;}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  th{text-align:left;font-size:9.5px;font-weight:700;letter-spacing:.08em;color:var(--ink-3);padding:6px 8px;border-bottom:1px solid var(--line-2);}
+  th.num,td.num{text-align:right;}
+  td{padding:8px;border-bottom:1px solid var(--line);font-weight:500;}
+  td .sk{font-weight:700;}
+  .sech{font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--ink-2);margin:20px 2px 8px;}
+  .buy{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-top:4px;}
+  .buyrow{display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:13px;}
+  .buyrow .k{color:var(--ink-2);font-weight:500;}
+  .buyrow .v{font-weight:700;}
+  .buyrow.big .v{color:var(--accent);font-size:16px;}
+  .diagram{margin-top:6px;}
+  .stick{position:relative;height:26px;border:1px solid var(--line-2);border-radius:5px;background:#fff;margin:5px 0;overflow:hidden;display:flex;}
+  .seg{height:100%;border-right:1px solid var(--line-2);display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;color:#fff;}
+  .seg.waste{background:repeating-linear-gradient(45deg,#eee,#eee 4px,#e4e4e0 4px,#e4e4e0 8px);color:var(--ink-3);}
+  .stocklabel{font-size:10px;font-weight:600;color:var(--ink-2);margin-top:8px;}
+  .exprow{display:flex;gap:8px;margin-top:18px;}
+  .exp{flex:1;height:48px;border:1px solid var(--line-2);border-radius:10px;background:var(--panel);font-family:inherit;font-weight:700;
+       font-size:12px;letter-spacing:.05em;color:var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;}
+  .exp:active{background:var(--panel-2);}
+  .empty{text-align:center;color:var(--ink-3);font-size:13px;padding:30px 0;font-weight:500;}
+
+  /* numeric keypad for length entry */
+  #lensheet .panel{max-height:auto;}
+  .lendisplay{font-size:30px;font-weight:700;text-align:center;padding:14px 0 6px;letter-spacing:.02em;}
+  .lendisplay .u{color:var(--ink-3);font-size:18px;}
+  .lensub{text-align:center;font-size:11px;color:var(--ink-3);font-weight:500;margin-bottom:12px;}
+  .keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:0 4px;}
+  .key{height:54px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2);font-family:inherit;font-size:20px;font-weight:600;
+       color:var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:center;}
+  .key:active{background:#fff;}
+  .key.wide{font-size:13px;font-weight:700;letter-spacing:.04em;}
+  .key.go{background:var(--accent);color:#fff;border-color:var(--accent);}
+
+  /* settings */
+  .setrow{display:flex;align-items:center;justify-content:space-between;padding:13px 2px;border-bottom:1px solid var(--line);}
+  .setrow .lbl{font-size:13px;font-weight:600;}
+  .setrow .desc{font-size:11px;color:var(--ink-3);font-weight:500;margin-top:2px;}
+  .seg-ctrl{display:flex;border:1px solid var(--line-2);border-radius:8px;overflow:hidden;}
+  .seg-ctrl button{height:36px;padding:0 12px;border:none;background:var(--panel);font-family:inherit;font-size:12px;font-weight:600;
+        color:var(--ink-2);cursor:pointer;border-left:1px solid var(--line-2);}
+  .seg-ctrl button:first-child{border-left:none;}
+  .seg-ctrl button.on{background:var(--accent);color:#fff;}
+  .toggle{width:48px;height:28px;border-radius:14px;background:var(--line-2);position:relative;cursor:pointer;transition:background .18s;}
+  .toggle.on{background:var(--accent);}
+  .toggle::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:left .18s;box-shadow:0 1px 3px rgba(0,0,0,.2);}
+  .toggle.on::after{left:23px;}
+  .dangerbtn{width:100%;height:46px;margin-top:18px;border:1px solid #f0c4b4;background:#fff6f2;color:var(--accent);border-radius:10px;
+        font-family:inherit;font-weight:700;font-size:12px;letter-spacing:.06em;cursor:pointer;}
+
+  /* footer signature */
+  #sig{position:absolute;left:14px;bottom:calc(20px + var(--safe-b));z-index:5;font-size:9px;font-weight:600;letter-spacing:.32em;
+       color:var(--ink);opacity:.16;pointer-events:none;}
+
+  @media (max-width:380px){
+    #wordmark .l1,#wordmark .l2{font-size:19px;}
+    .tbtn{min-width:50px;padding:0 8px;}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="wordmark">
+  <div class="l1">LUMBR<span class="dot">.</span></div>
+  <div class="l2">KRAFT</div>
+</div>
+
+<div id="topbar">
+  <div class="chip" id="gridChip">GRID <span class="v" id="gridVal">1"</span></div>
+  <div class="chip" id="settingsChip" aria-label="settings">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6b6b66" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>
+  </div>
+</div>
+
+<div id="hint"></div>
+
+<div id="placerow"><button id="placeRowBtn">PLACE ROW <span class="cnt" id="rowCnt">0</span></button></div>
+
+<div id="selbar">
+  <div id="seldims"><span class="sku" id="selSku">2×4</span><span id="selSpecies">SPF</span><span class="len" id="selLen">8' 0"</span></div>
+  <div id="selactions">
+    <span class="axislabel">LOCK</span>
+    <button class="sbtn lock" data-axis="x" id="lockX">X</button>
+    <button class="sbtn lock" data-axis="y" id="lockY">Y</button>
+    <button class="sbtn lock" data-axis="z" id="lockZ">Z</button>
+    <button class="sbtn" id="rotBtn">ROTATE</button>
+    <button class="sbtn" id="dupBtn">DUPE</button>
+    <button class="sbtn danger" id="delBtn">DELETE</button>
+  </div>
+</div>
+
+<div id="toolbar">
+  <button class="tbtn primary" id="addBtn">
+    <svg class="ico" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>ADD
+  </button>
+  <button class="tbtn" id="modeBtn">
+    <svg class="ico" viewBox="0 0 24 24" id="modeIco"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/></svg><span id="modeLbl">MOVE</span>
+  </button>
+  <button class="tbtn" id="undoBtn" disabled>
+    <svg class="ico" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 5 5v0a5 5 0 0 1-5 5H9"/></svg>UNDO
+  </button>
+  <button class="tbtn" id="redoBtn" disabled>
+    <svg class="ico" viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H9a5 5 0 0 0-5 5v0a5 5 0 0 0 5 5h6"/></svg>REDO
+  </button>
+  <button class="tbtn" id="cutBtn">
+    <svg class="ico" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4L8.12 15.88M14.47 14.48L20 20M8.12 8.12L12 12"/></svg>CUT LIST
+  </button>
+</div>
+
+<!-- ADD sheet -->
+<div class="sheet" id="addSheet">
+  <div class="scrim" data-close></div>
+  <div class="panel">
+    <div class="grab"></div>
+    <div class="phead"><h2>ADD LUMBER</h2><div class="x" data-close>&times;</div></div>
+    <div class="pbody">
+      <div id="catList"></div>
+      <div class="group-label" style="margin-top:18px">LENGTH</div>
+      <div class="lenrow" id="lenList"></div>
+      <button class="addnow" id="addNow">ADD TO SCENE</button>
+    </div>
+  </div>
+</div>
+
+<!-- CUT LIST sheet -->
+<div class="sheet" id="cutSheet">
+  <div class="scrim" data-close></div>
+  <div class="panel">
+    <div class="grab"></div>
+    <div class="phead"><h2>CUT LIST</h2><div class="x" data-close>&times;</div></div>
+    <div class="pbody" id="cutBody"></div>
+  </div>
+</div>
+
+<!-- LENGTH keypad sheet -->
+<div class="sheet" id="lenSheet">
+  <div class="scrim" data-close></div>
+  <div class="panel">
+    <div class="grab"></div>
+    <div class="phead"><h2>EDIT LENGTH</h2><div class="x" data-close>&times;</div></div>
+    <div class="pbody">
+      <div class="lendisplay" id="lenDisp">96<span class="u"> in</span></div>
+      <div class="lensub" id="lenSub">8' 0"</div>
+      <div class="keypad" id="keypad"></div>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS sheet -->
+<div class="sheet" id="setSheet">
+  <div class="scrim" data-close></div>
+  <div class="panel">
+    <div class="grab"></div>
+    <div class="phead"><h2>SETTINGS</h2><div class="x" data-close>&times;</div></div>
+    <div class="pbody">
+      <div class="setrow">
+        <div><div class="lbl">Grid snap</div><div class="desc">Movement increment</div></div>
+        <div class="seg-ctrl" id="gridSeg">
+          <button data-g="0.5">½"</button><button data-g="1">1"</button><button data-g="3">3"</button><button data-g="6">6"</button><button data-g="0">OFF</button>
+        </div>
+      </div>
+      <div class="setrow">
+        <div><div class="lbl">On-center spacing</div><div class="desc">Stud run prediction</div></div>
+        <div class="seg-ctrl" id="ocSeg">
+          <button data-oc="12">12"</button><button data-oc="16">16"</button><button data-oc="19.2">19.2"</button><button data-oc="24">24"</button>
+        </div>
+      </div>
+      <div class="setrow">
+        <div><div class="lbl">Ghost suggestions</div><div class="desc">Predict the next piece</div></div>
+        <div class="toggle on" id="ghostToggle"></div>
+      </div>
+      <div class="setrow">
+        <div><div class="lbl">Default species</div><div class="desc">For board-foot pricing</div></div>
+        <div class="seg-ctrl" id="specSeg">
+          <button data-s="SPF">SPF</button><button data-s="PT">PT</button><button data-s="DF">DF</button>
+        </div>
+      </div>
+      <button class="dangerbtn" id="clearBtn">CLEAR SCENE</button>
+      <div class="exprow">
+        <button class="exp" id="expProj">EXPORT PROJECT</button>
+        <button class="exp" id="impProj">IMPORT</button>
+      </div>
+      <input type="file" id="fileIn" accept="application/json" style="display:none">
+    </div>
+  </div>
+</div>
+
+<div id="sig">KLINEKRAFT</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.169.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ============================================================
+   LUMBR — parametric dimensional-lumber builder
+   Units: world unit = 1 inch. Y up. Ground = XZ plane (y=0).
+   ============================================================ */
+
+/* ---------- lumber catalog (actual dims for geometry, nominal for board-feet) ---------- */
+const CATALOG = {
+  // dimensional
+  '2x2':{nm:'2×2', t:1.5, w:1.5,  nomT:2, nomW:2,  group:'DIMENSIONAL'},
+  '2x4':{nm:'2×4', t:1.5, w:3.5,  nomT:2, nomW:4,  group:'DIMENSIONAL'},
+  '2x6':{nm:'2×6', t:1.5, w:5.5,  nomT:2, nomW:6,  group:'DIMENSIONAL'},
+  '2x8':{nm:'2×8', t:1.5, w:7.25, nomT:2, nomW:8,  group:'DIMENSIONAL'},
+  '2x10':{nm:'2×10',t:1.5, w:9.25, nomT:2, nomW:10, group:'DIMENSIONAL'},
+  '2x12':{nm:'2×12',t:1.5, w:11.25,nomT:2, nomW:12, group:'DIMENSIONAL'},
+  '4x4':{nm:'4×4', t:3.5, w:3.5,  nomT:4, nomW:4,  group:'POSTS'},
+  '4x6':{nm:'4×6', t:3.5, w:5.5,  nomT:4, nomW:6,  group:'POSTS'},
+  '6x6':{nm:'6×6', t:5.5, w:5.5,  nomT:6, nomW:6,  group:'POSTS'},
+  '1x4':{nm:'1×4', t:0.75,w:3.5,  nomT:1, nomW:4,  group:'BOARDS'},
+  '1x6':{nm:'1×6', t:0.75,w:5.5,  nomT:1, nomW:6,  group:'BOARDS'},
+  '1x8':{nm:'1×8', t:0.75,w:7.25, nomT:1, nomW:8,  group:'BOARDS'},
+};
+// per-linear-foot price by species (rough planning figures, editable concept)
+const PRICE = { SPF:{'2x2':.55,'2x4':.72,'2x6':1.15,'2x8':1.75,'2x10':2.35,'2x12':3.05,'4x4':2.45,'4x6':5.2,'6x6':7.8,'1x4':.95,'1x6':1.45,'1x8':1.95},
+                PT: {'2x2':.85,'2x4':1.05,'2x6':1.65,'2x8':2.45,'2x10':3.15,'2x12':4.1,'4x4':3.35,'4x6':6.8,'6x6':10.5,'1x4':1.35,'1x6':1.95,'1x8':2.65},
+                DF: {'2x2':.75,'2x4':.98,'2x6':1.55,'2x8':2.25,'2x10':2.95,'2x12':3.85,'4x4':3.1,'4x6':6.4,'6x6':9.8,'1x4':1.25,'1x6':1.85,'1x8':2.45} };
+const STOCK_LENGTHS = [96,120,144,192]; // 8,10,12,16 ft
+const KERF = 0.125, TRIM = 0.5;
+const WOOD_COLORS = {SPF:0xd9c19a, PT:0xa9b58e, DF:0xd7a979};
+
+/* ---------- app state ---------- */
+const state = {
+  boards: [],           // {id,sku,len,pos:{x,y,z},rot:{x,y,z},species}
+  selectedId: null,
+  mode: 'move',         // 'move' | 'rotate'
+  grid: 1,
+  oc: 16,
+  ghosts: true,
+  species: 'SPF',
+  axisLock: null,       // null|'x'|'y'|'z'
+};
+let undoStack = [], redoStack = [];
+let nextId = 1;
+
+/* ---------- three.js setup ---------- */
+const app = document.getElementById('app');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xf4f4f2);
+scene.fog = new THREE.Fog(0xf4f4f2, 320, 760);
+
+const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 1, 4000);
+camera.position.set(120, 110, 150);
+
+const renderer = new THREE.WebGLRenderer({antialias:true, powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+app.appendChild(renderer.domElement);
+
+// lighting — soft studio
+scene.add(new THREE.HemisphereLight(0xffffff, 0xb9b9b0, 1.05));
+const key = new THREE.DirectionalLight(0xffffff, 1.55);
+key.position.set(140, 220, 120);
+key.castShadow = true;
+key.shadow.mapSize.set(2048,2048);
+key.shadow.camera.near=10; key.shadow.camera.far=900;
+const sc=320; key.shadow.camera.left=-sc; key.shadow.camera.right=sc; key.shadow.camera.top=sc; key.shadow.camera.bottom=-sc;
+key.shadow.bias=-0.0004;
+scene.add(key);
+const fill = new THREE.DirectionalLight(0xffffff, .35); fill.position.set(-120,90,-100); scene.add(fill);
+
+// ground: shadow-catcher + grid
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(2000,2000),
+  new THREE.ShadowMaterial({opacity:.12})
+);
+ground.rotation.x = -Math.PI/2; ground.receiveShadow = true; ground.position.y = 0;
+scene.add(ground);
+
+const grid = new THREE.GridHelper(960, 80, 0xcfcfc8, 0xe4e4de); // 12" cells over 80ft
+grid.position.y = 0.02;
+grid.material.transparent = true; grid.material.opacity = .9;
+scene.add(grid);
+// faint origin marker
+const originDot = new THREE.Mesh(new THREE.CircleGeometry(1.4,24), new THREE.MeshBasicMaterial({color:0xff5500}));
+originDot.rotation.x=-Math.PI/2; originDot.position.y=.05; scene.add(originDot);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = .12;
+controls.minDistance = 24; controls.maxDistance = 1400;
+controls.maxPolarAngle = Math.PI/2 - 0.02;
+controls.target.set(0, 18, 0);
+controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+
+/* ---------- board meshes ---------- */
+const boardGroup = new THREE.Group(); scene.add(boardGroup);
+const ghostGroup = new THREE.Group(); scene.add(ghostGroup);
+const meshes = new Map(); // id -> mesh
+
+function boardGeo(sku, len){ const c=CATALOG[sku]; return new THREE.BoxGeometry(len, c.t, c.w); } // long axis = X
+
+function makeMesh(b){
+  const c = CATALOG[b.sku];
+  const geo = boardGeo(b.sku, b.len);
+  const mat = new THREE.MeshStandardMaterial({color:WOOD_COLORS[b.species]||WOOD_COLORS.SPF, roughness:.82, metalness:0});
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.castShadow = true; mesh.receiveShadow = true;
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({color:0x8a8a82}));
+  edges.name='edges'; mesh.add(edges);
+  mesh.userData.id = b.id;
+  applyTransform(mesh,b);
+  boardGroup.add(mesh); meshes.set(b.id, mesh);
+  return mesh;
+}
+function applyTransform(mesh,b){
+  mesh.position.set(b.pos.x,b.pos.y,b.pos.z);
+  mesh.rotation.set(THREE.MathUtils.degToRad(b.rot.x),THREE.MathUtils.degToRad(b.rot.y),THREE.MathUtils.degToRad(b.rot.z));
+  mesh.updateMatrixWorld(true);
+  b._box = new THREE.Box3().setFromObject(mesh);
+}
+function rebuildMesh(b){ const old=meshes.get(b.id); if(old){boardGroup.remove(old);disposeMesh(old);meshes.delete(b.id);} makeMesh(b); }
+function disposeMesh(m){ m.traverse(o=>{ if(o.geometry)o.geometry.dispose(); if(o.material){(Array.isArray(o.material)?o.material:[o.material]).forEach(x=>x.dispose());} }); }
+
+function setSelectedVisual(){
+  meshes.forEach((m,id)=>{
+    const e=m.getObjectByName('edges');
+    if(!e) return;
+    if(id===state.selectedId){ e.material.color.set(0xff5500); m.material.emissive.set(0xff5500); m.material.emissiveIntensity=.08; }
+    else { e.material.color.set(0x8a8a82); m.material.emissive.set(0x000000); m.material.emissiveIntensity=0; }
+  });
+}
+
+/* ---------- helpers: board math ---------- */
+function boardById(id){ return state.boards.find(b=>b.id===id); }
+function freshBoard(sku,len,pos,rot){ return {id:nextId++, sku, len, species:state.species, pos:{...pos}, rot:rot?{...rot}:{x:0,y:0,z:0}}; }
+
+// classify orientation from rotation: is long axis vertical (stud) or horizontal (plate)?
+function longAxisWorld(b){
+  const q=new THREE.Quaternion().setFromEuler(new THREE.Euler(
+    THREE.MathUtils.degToRad(b.rot.x),THREE.MathUtils.degToRad(b.rot.y),THREE.MathUtils.degToRad(b.rot.z)));
+  return new THREE.Vector3(1,0,0).applyQuaternion(q);
+}
+function isStud(b){ return Math.abs(longAxisWorld(b).y) > 0.7; }
+function isPlate(b){ const a=longAxisWorld(b); return Math.abs(a.y) < 0.3; }
+
+/* ---------- persistence ---------- */
+const SKEY='lumbr.project.v1', PKEY='lumbr.prefs.v1';
+function save(){
+  try{
+    localStorage.setItem(SKEY, JSON.stringify({boards:state.boards, nextId}));
+    localStorage.setItem(PKEY, JSON.stringify({grid:state.grid,oc:state.oc,ghosts:state.ghosts,species:state.species}));
+  }catch(e){}
+}
+function load(){
+  try{
+    const p=JSON.parse(localStorage.getItem(PKEY)||'null');
+    if(p){state.grid=p.grid??1; state.oc=p.oc??16; state.ghosts=p.ghosts??true; state.species=p.species||'SPF';}
+    const s=JSON.parse(localStorage.getItem(SKEY)||'null');
+    if(s&&s.boards){ state.boards=s.boards; nextId=s.nextId||(Math.max(0,...s.boards.map(b=>b.id))+1);
+      state.boards.forEach(b=>{ if(!b.species)b.species='SPF'; makeMesh(b); }); }
+  }catch(e){}
+}
+
+/* ---------- undo/redo ---------- */
+function snapshot(){ undoStack.push(JSON.stringify(state.boards)); if(undoStack.length>60)undoStack.shift(); redoStack.length=0; updateUndoButtons(); }
+function restore(json){
+  meshes.forEach(m=>{boardGroup.remove(m);disposeMesh(m);}); meshes.clear();
+  state.boards=JSON.parse(json); state.boards.forEach(b=>makeMesh(b));
+  if(!boardById(state.selectedId))state.selectedId=null;
+  setSelectedVisual(); refreshSelBar(); save(); updateGhost();
+}
+function undo(){ if(!undoStack.length)return; redoStack.push(JSON.stringify(state.boards)); restore(undoStack.pop()); updateUndoButtons(); }
+function redo(){ if(!redoStack.length)return; undoStack.push(JSON.stringify(state.boards)); restore(redoStack.pop()); updateUndoButtons(); }
+function updateUndoButtons(){ document.getElementById('undoBtn').disabled=!undoStack.length; document.getElementById('redoBtn').disabled=!redoStack.length; }
+
+/* ---------- snapping ---------- */
+function snapValue(v){ return state.grid>0 ? Math.round(v/state.grid)*state.grid : v; }
+
+// snap a moving board's position by aligning its AABB faces/ends to nearby boards
+function applyBoardSnap(b, pos){
+  const mesh=meshes.get(b.id);
+  mesh.position.set(pos.x,pos.y,pos.z); mesh.updateMatrixWorld(true);
+  const box=new THREE.Box3().setFromObject(mesh);
+  const TH=2.0; // snap threshold (inches)
+  let snapped=false; const adj={x:0,y:0,z:0};
+  const axes=['x','y','z'];
+  for(const b2 of state.boards){
+    if(b2.id===b.id) continue;
+    if(!b2._box) {const m2=meshes.get(b2.id); b2._box=new THREE.Box3().setFromObject(m2);}
+    const o=b2._box;
+    // proximity gate
+    if(box.min.x>o.max.x+12||box.max.x<o.min.x-12||box.min.z>o.max.z+12||box.max.z<o.min.z-12||box.min.y>o.max.y+12||box.max.y<o.min.y-12) continue;
+    for(const a of axes){
+      const cands=[[box.min[a],o.min[a]],[box.min[a],o.max[a]],[box.max[a],o.min[a]],[box.max[a],o.max[a]],
+                   [(box.min[a]+box.max[a])/2,(o.min[a]+o.max[a])/2]];
+      let best=null;
+      for(const [mv,ot] of cands){ const d=ot-mv; if(Math.abs(d)<TH && (best===null||Math.abs(d)<Math.abs(best))) best=d; }
+      if(best!==null && (adj[a]===0||Math.abs(best)<Math.abs(adj[a]))) {adj[a]=best; snapped=true;}
+    }
+  }
+  return {pos:{x:pos.x+adj.x,y:pos.y+adj.y,z:pos.z+adj.z}, snapped};
+}
+
+/* ---------- pointer interaction ---------- */
+const raycaster=new THREE.Raycaster();
+const ndc=new THREE.Vector2();
+let pointers=new Map();
+let drag=null; // {b, startPos, planePoint0, plane, moved}
+
+function setNDC(e){ ndc.x=(e.clientX/innerWidth)*2-1; ndc.y=-(e.clientY/innerHeight)*2+1; raycaster.setFromCamera(ndc,camera); }
+function hitBoards(){ const hits=raycaster.intersectObjects(boardGroup.children,true); for(const h of hits){let o=h.object;while(o&&o.userData.id===undefined)o=o.parent;if(o)return o.userData.id;} return null; }
+function hitGhost(){ const hits=raycaster.intersectObjects(ghostGroup.children,true); for(const h of hits){let o=h.object;while(o&&o.userData.gi===undefined)o=o.parent;if(o)return o.userData.gi;} return null; }
+
+function dragPlaneFor(b){
+  const p=new THREE.Vector3(b.pos.x,b.pos.y,b.pos.z);
+  if(state.axisLock==='y'){ // vertical plane facing camera
+    const n=new THREE.Vector3(); camera.getWorldDirection(n); n.y=0; n.normalize();
+    return new THREE.Plane().setFromNormalAndCoplanarPoint(n,p);
+  }
+  return new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(0,1,0),p); // horizontal
+}
+function planeHit(plane){ const pt=new THREE.Vector3(); return raycaster.ray.intersectPlane(plane,pt)?pt:null; }
+
+renderer.domElement.addEventListener('pointerdown', e=>{
+  pointers.set(e.pointerId,e);
+  if(pointers.size>=2){ // two-finger -> camera; abort any board drag
+    if(drag){ drag=null; controls.enabled=true; }
+    controls.enabled=true; return;
+  }
+  setNDC(e);
+  // ghost first
+  if(state.ghosts){ const gi=hitGhost(); if(gi!==null){ confirmGhost(gi); return; } }
+  const id=hitBoards();
+  if(id!==null){
+    const b=boardById(id);
+    select(id);
+    if(state.mode==='move'){
+      controls.enabled=false;
+      const plane=dragPlaneFor(b); const p0=planeHit(plane);
+      drag={b, startPos:{...b.pos}, p0, plane, moved:false};
+    }
+  } else {
+    select(null);
+    controls.enabled=true;
+  }
+}, true);
+
+renderer.domElement.addEventListener('pointermove', e=>{
+  if(!pointers.has(e.pointerId))return;
+  pointers.set(e.pointerId,e);
+  if(!drag||pointers.size>1)return;
+  setNDC(e);
+  const cur=planeHit(drag.plane); if(!cur||!drag.p0)return;
+  const delta=new THREE.Vector3().subVectors(cur,drag.p0);
+  if(delta.length()>0.6) drag.moved=true;
+  let np={x:drag.startPos.x+delta.x, y:drag.startPos.y+delta.y, z:drag.startPos.z+delta.z};
+  if(state.axisLock==='x'){ np.y=drag.startPos.y; np.z=drag.startPos.z; }
+  else if(state.axisLock==='z'){ np.x=drag.startPos.x; np.y=drag.startPos.y; }
+  else if(state.axisLock==='y'){ np.x=drag.startPos.x; np.z=drag.startPos.z; }
+  else { np.y=drag.startPos.y; } // free move stays in original horizontal plane
+  // grid snap
+  np.x=snapValue(np.x); np.z=snapValue(np.z); if(state.axisLock==='y')np.y=Math.max(CATALOG[drag.b.sku].t/2, snapValue(np.y));
+  // board snap
+  const r=applyBoardSnap(drag.b,np);
+  np=r.pos;
+  drag.b.pos=np; applyTransform(meshes.get(drag.b.id),drag.b);
+  // snap feedback
+  const e2=meshes.get(drag.b.id).getObjectByName('edges'); if(e2)e2.material.color.set(r.snapped?0xff5500:0xffa477);
+  refreshSelBar();
+}, true);
+
+function endPointer(e){
+  pointers.delete(e.pointerId);
+  if(drag){
+    if(drag.moved){ snapshotIfChanged(drag.startPos,drag.b); save(); updateGhostFrom(drag.b); }
+    drag=null;
+  }
+  if(pointers.size===0) controls.enabled=true;
+  setSelectedVisual();
+}
+renderer.domElement.addEventListener('pointerup', endPointer, true);
+renderer.domElement.addEventListener('pointercancel', endPointer, true);
+
+function snapshotIfChanged(startPos,b){
+  if(startPos.x!==b.pos.x||startPos.y!==b.pos.y||startPos.z!==b.pos.z){
+    // push pre-move state
+    const tmp=state.boards.map(x=> x.id===b.id ? {...x,pos:{...startPos}} : x);
+    undoStack.push(JSON.stringify(tmp)); if(undoStack.length>60)undoStack.shift(); redoStack.length=0; updateUndoButtons();
+  }
+}
+
+/* ---------- selection ---------- */
+function select(id){ state.selectedId=id; state.axisLock=null; setSelectedVisual(); refreshSelBar(); }
+function refreshSelBar(){
+  const bar=document.getElementById('selbar');
+  const b=boardById(state.selectedId);
+  if(!b){ bar.classList.remove('show'); return; }
+  bar.classList.add('show');
+  document.getElementById('selSku').textContent=CATALOG[b.sku].nm;
+  document.getElementById('selSpecies').textContent=b.species;
+  document.getElementById('selLen').textContent=inToFtIn(b.len);
+  ['x','y','z'].forEach(a=>document.getElementById('lock'+a.toUpperCase()).classList.toggle('active',state.axisLock===a));
+}
+
+/* ---------- format ---------- */
+function inToFtIn(inches){
+  const ft=Math.floor(inches/12); let rem=inches-ft*12;
+  const whole=Math.floor(rem); const frac=rem-whole;
+  const eighths=Math.round(frac*8); let fracStr='';
+  if(eighths===8){ return inToFtIn((ft*12)+whole+1); }
+  if(eighths>0){ const map={1:'1/8',2:'1/4',3:'3/8',4:'1/2',5:'5/8',6:'3/4',7:'7/8'}; fracStr=' '+map[eighths]; }
+  let s='';
+  if(ft>0) s+=ft+"' ";
+  s+=whole+fracStr+'"';
+  return s.trim();
+}
+
+/* ============================================================
+   GHOST SUGGESTION ENGINE
+   ============================================================ */
+let ghostPlan=null; // {boards:[{sku,len,pos,rot,species}], runStartIndex}
+function clearGhosts(){ ghostGroup.clear(); ghostPlan=null; document.getElementById('placerow').classList.remove('show'); }
+
+function makeGhostMesh(g, idx, opacity){
+  const c=CATALOG[g.sku];
+  const mat=new THREE.MeshBasicMaterial({color:0xff5500, transparent:true, opacity, depthWrite:false});
+  const mesh=new THREE.Mesh(boardGeo(g.sku,g.len), mat);
+  mesh.position.set(g.pos.x,g.pos.y,g.pos.z);
+  mesh.rotation.set(THREE.MathUtils.degToRad(g.rot.x),THREE.MathUtils.degToRad(g.rot.y),THREE.MathUtils.degToRad(g.rot.z));
+  mesh.userData.gi=idx;
+  const eg=new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry), new THREE.LineBasicMaterial({color:0xff5500,transparent:true,opacity:Math.min(1,opacity+0.35)}));
+  mesh.add(eg);
+  ghostGroup.add(mesh);
+}
+
+function updateGhost(){ clearGhosts(); if(!state.ghosts) return; const b=boardById(state.selectedId)||state.boards[state.boards.length-1]; if(b) buildPrediction(b); }
+function updateGhostFrom(b){ clearGhosts(); if(!state.ghosts) return; buildPrediction(b); }
+
+function buildPrediction(b){
+  if(!b) return;
+  const c=CATALOG[b.sku];
+
+  // --- RULE 1: stud run. If >=2 recent studs same sku evenly spaced, continue the run. ---
+  const studs=state.boards.filter(x=>isStud(x)&&x.sku===b.sku);
+  if(isStud(b) && studs.length>=2){
+    // find another stud sharing the run line (same Z or same X, same Y base)
+    const last=b;
+    let partner=null, axis=null;
+    for(const s of studs){
+      if(s.id===last.id) continue;
+      if(Math.abs(s.pos.y-last.pos.y)<1){
+        if(Math.abs(s.pos.z-last.pos.z)<1 && Math.abs(s.pos.x-last.pos.x)>1){ partner=s; axis='x'; }
+        else if(Math.abs(s.pos.x-last.pos.x)<1 && Math.abs(s.pos.z-last.pos.z)>1){ partner=s; axis='z'; }
+      }
+      if(partner) break;
+    }
+    if(partner && axis){
+      let step=last.pos[axis]-partner.pos[axis];
+      if(Math.abs(step)<0.1) step=state.oc;
+      // direction continues away from partner
+      const dir=Math.sign(step)||1;
+      const ghosts=[]; let pos={...last.pos};
+      // figure how far the run can go: bounded by a plate under the studs, else 6 steps
+      let limit=last.pos[axis]+dir*Math.abs(step)*8;
+      const plate=findPlateUnder(last,axis);
+      if(plate){ const pb=plate._box||new THREE.Box3().setFromObject(meshes.get(plate.id)); limit = dir>0?pb.max[axis]-c.w/2 : pb.min[axis]+c.w/2; }
+      let next=last.pos[axis]+dir*Math.abs(step); let guard=0;
+      while(((dir>0&&next<=limit+0.01)||(dir<0&&next>=limit-0.01)) && guard<20){
+        const gp={...last.pos}; gp[axis]=next;
+        ghosts.push({sku:last.sku,len:last.len,species:last.species,pos:gp,rot:{...last.rot}});
+        next+=dir*Math.abs(step); guard++;
+      }
+      if(ghosts.length){
+        ghostPlan={boards:ghosts, kind:'run', oc:Math.abs(step)};
+        makeGhostMesh(ghosts[0],0,0.42);
+        for(let i=1;i<ghosts.length;i++) makeGhostMesh(ghosts[i],i,0.14);
+        if(ghosts.length>1){ document.getElementById('rowCnt').textContent=ghosts.length; document.getElementById('placerow').classList.add('show'); }
+        return;
+      }
+    }
+  }
+
+  // --- RULE 2: plate -> stud at the start end, standing on top ---
+  if(isPlate(b)){
+    const axis=Math.abs(longAxisWorld(b).x)>0.7?'x':'z';
+    const box=b._box||new THREE.Box3().setFromObject(meshes.get(b.id));
+    const studSku=b.sku.startsWith('2')?'2x4':b.sku;
+    const sc=CATALOG[studSku];
+    const studLen=92.625; // common precut stud
+    // place stud standing (rotate plate's long axis to vertical): rot z=90 if plate along x
+    const rot = axis==='x' ? {x:0,y:0,z:90} : {x:90,y:0,z:0};
+    // stud sits on top of plate: base at top of plate
+    const topY=box.max.y;
+    const startEdge = b.pos[axis]-( (box.max[axis]-box.min[axis])/2 ) + sc.w/2 + 0.75;
+    const gp={x:b.pos.x,y:topY+studLen/2,z:b.pos.z};
+    gp[axis]=startEdge;
+    const g={sku:studSku,len:studLen,species:b.species,pos:gp,rot};
+    ghostPlan={boards:[g], kind:'firststud'};
+    makeGhostMesh(g,0,0.42);
+    return;
+  }
+
+  // --- RULE 3: stud (single) -> suggest a top or bottom plate spanning, OR mirror to start a run ---
+  if(isStud(b)){
+    // suggest a sibling stud one OC step over (start a run)
+    const axisGuess='x';
+    const g={sku:b.sku,len:b.len,species:b.species,pos:{x:b.pos.x+state.oc,y:b.pos.y,z:b.pos.z},rot:{...b.rot}};
+    ghostPlan={boards:[g], kind:'startrun'};
+    makeGhostMesh(g,0,0.4);
+    return;
+  }
+}
+
+function findPlateUnder(stud,axis){
+  const sb=stud._box||new THREE.Box3().setFromObject(meshes.get(stud.id));
+  for(const p of state.boards){
+    if(!isPlate(p)) continue;
+    const pa=Math.abs(longAxisWorld(p).x)>0.7?'x':'z';
+    if(pa!==axis) continue;
+    const pb=p._box||new THREE.Box3().setFromObject(meshes.get(p.id));
+    if(pb.max.y<=sb.min.y+1.5 && pb.max.y>=sb.min.y-3 &&
+       pb.min[axis]-2<=sb.min[axis] && pb.max[axis]+2>=sb.max[axis]) return p;
+  }
+  return null;
+}
+
+function confirmGhost(gi){
+  if(!ghostPlan) return;
+  const g=ghostPlan.boards[gi];
+  snapshot();
+  const b=freshBoard(g.sku,g.len,g.pos,g.rot); b.species=g.species;
+  state.boards.push(b); makeMesh(b); select(b.id); save();
+  toast(ghostPlan.kind==='run'?'STUD PLACED · ON CENTER':'PLACED');
+  updateGhostFrom(b);
+}
+function placeWholeRow(){
+  if(!ghostPlan||ghostPlan.kind!=='run') return;
+  snapshot();
+  let lastB=null;
+  for(const g of ghostPlan.boards){ const b=freshBoard(g.sku,g.len,g.pos,g.rot); b.species=g.species; state.boards.push(b); makeMesh(b); lastB=b; }
+  save(); toast(ghostPlan.boards.length+' STUDS PLACED · ON CENTER');
+  if(lastB) select(lastB.id);
+  updateGhostFrom(lastB);
+}
+
+/* ============================================================
+   UI WIRING
+   ============================================================ */
+const $=id=>document.getElementById(id);
+function openSheet(id){ $(id).classList.add('show'); }
+function closeSheet(el){ el.classList.remove('show'); }
+document.querySelectorAll('[data-close]').forEach(el=>el.addEventListener('click',e=>{ closeSheet(e.target.closest('.sheet')); }));
+
+let toastT;
+function toast(msg){ const h=$('hint'); h.textContent=msg; h.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>h.classList.remove('show'),1400); }
+
+// ---- ADD sheet ----
+let addPick={sku:'2x4', len:96};
+function buildCatalog(){
+  const wrap=$('catList'); wrap.innerHTML='';
+  const groups={};
+  Object.entries(CATALOG).forEach(([sku,c])=>{ (groups[c.group]=groups[c.group]||[]).push([sku,c]); });
+  for(const [gname,items] of Object.entries(groups)){
+    const gl=document.createElement('div'); gl.className='group-label'; gl.textContent=gname; wrap.appendChild(gl);
+    const grid=document.createElement('div'); grid.className='catgrid';
+    for(const [sku,c] of items){
+      const el=document.createElement('div'); el.className='cat'+(sku===addPick.sku?' sel':'');
+      el.innerHTML=`<div class="nm">${c.nm}</div><div class="ac">${c.t}″×${c.w}″</div>`;
+      el.onclick=()=>{ addPick.sku=sku; buildCatalog(); };
+      grid.appendChild(el);
+    }
+    wrap.appendChild(grid);
+  }
+  buildLens();
+}
+function buildLens(){
+  const wrap=$('lenList'); wrap.innerHTML='';
+  STOCK_LENGTHS.forEach(L=>{
+    const el=document.createElement('div'); el.className='len'+(L===addPick.len?' sel':'');
+    el.innerHTML=`${L/12}'<div class="sub">${L}"</div>`;
+    el.onclick=()=>{ addPick.len=L; buildLens(); };
+    wrap.appendChild(el);
+  });
+}
+$('addBtn').onclick=()=>{ buildCatalog(); openSheet('addSheet'); };
+$('addNow').onclick=()=>{
+  snapshot();
+  const t=new THREE.Vector3(controls.target.x,0,controls.target.z);
+  const c=CATALOG[addPick.sku];
+  const b=freshBoard(addPick.sku, addPick.len, {x:Math.round(t.x),y:c.t/2,z:Math.round(t.z)}, {x:0,y:0,z:0});
+  state.boards.push(b); makeMesh(b); select(b.id); save();
+  closeSheet($('addSheet')); toast('ADDED · '+c.nm+' '+inToFtIn(addPick.len));
+  updateGhostFrom(b);
+};
+
+// ---- mode toggle ----
+$('modeBtn').onclick=()=>{
+  state.mode = state.mode==='move'?'rotate':'move';
+  $('modeLbl').textContent = state.mode.toUpperCase();
+  $('modeBtn').classList.toggle('modeRot', state.mode==='rotate');
+  // rotate mode: tapping a board rotates it; show hint
+  toast(state.mode==='rotate'?'ROTATE MODE · TAP BOARD TO TURN 90°':'MOVE MODE');
+};
+
+// in rotate mode a tap should rotate; intercept selection
+renderer.domElement.addEventListener('pointerup', e=>{
+  if(state.mode==='rotate' && !drag && pointers.size===0){
+    // selection already happened on down; rotate the selected
+  }
+},true);
+
+// rotate via selection-bar button works in both modes
+$('rotBtn').onclick=()=>rotateSel();
+function rotateSel(){
+  const b=boardById(state.selectedId); if(!b) return;
+  snapshot();
+  // rotate around the axis most aligned with "up" view: default yaw 90° about Y; if stud, rotate about X
+  if(isStud(b)) b.rot.x=(b.rot.x+90)%360; else b.rot.y=(b.rot.y+90)%360;
+  applyTransform(meshes.get(b.id),b); save(); refreshSelBar(); updateGhostFrom(b);
+}
+
+// rotate mode tap = rotate
+let lastTapId=null;
+renderer.domElement.addEventListener('pointerdown',e=>{
+  if(state.mode==='rotate' && pointers.size===1){
+    setNDC(e); const id=hitBoards();
+    if(id!==null){ select(id); rotateSel(); }
+  }
+},true);
+
+// ---- selection actions ----
+$('dupBtn').onclick=()=>{
+  const b=boardById(state.selectedId); if(!b)return;
+  snapshot();
+  const nb=freshBoard(b.sku,b.len,{x:b.pos.x+CATALOG[b.sku].w+1.5,y:b.pos.y,z:b.pos.z},b.rot); nb.species=b.species;
+  state.boards.push(nb); makeMesh(nb); select(nb.id); save(); toast('DUPLICATED'); updateGhostFrom(nb);
+};
+$('delBtn').onclick=()=>{
+  const b=boardById(state.selectedId); if(!b)return;
+  snapshot();
+  const m=meshes.get(b.id); boardGroup.remove(m); disposeMesh(m); meshes.delete(b.id);
+  state.boards=state.boards.filter(x=>x.id!==b.id);
+  select(null); save(); toast('DELETED'); clearGhosts();
+};
+document.querySelectorAll('.sbtn.lock').forEach(btn=>{
+  btn.onclick=()=>{ const a=btn.dataset.axis; state.axisLock = state.axisLock===a?null:a; refreshSelBar();
+    toast(state.axisLock?('LOCKED TO '+a.toUpperCase()+' AXIS'):'AXIS LOCK OFF'); };
+});
+
+// ---- length keypad ----
+let lenBuf='';
+$('selLen').onclick=()=>{ const b=boardById(state.selectedId); if(!b)return; lenBuf=String(b.len); buildKeypad(); renderLenDisp(); openSheet('lenSheet'); };
+function renderLenDisp(){ const n=parseFloat(lenBuf||'0')||0; $('lenDisp').innerHTML=(lenBuf||'0')+'<span class="u"> in</span>'; $('lenSub').textContent=inToFtIn(n); }
+function buildKeypad(){
+  const kp=$('keypad'); kp.innerHTML='';
+  const keys=['1','2','3','4','5','6','7','8','9','.','0','⌫'];
+  keys.forEach(k=>{ const el=document.createElement('button'); el.className='key'+(k==='⌫'?' wide':''); el.textContent=k;
+    el.onclick=()=>{ if(k==='⌫')lenBuf=lenBuf.slice(0,-1); else if(k==='.'){if(!lenBuf.includes('.'))lenBuf+='.';} else lenBuf+=k; renderLenDisp(); }; kp.appendChild(el); });
+  const ft=document.createElement('button'); ft.className='key wide'; ft.textContent="+1 FT"; ft.onclick=()=>{lenBuf=String((parseFloat(lenBuf||'0')||0)+12);renderLenDisp();}; kp.appendChild(ft);
+  const go=document.createElement('button'); go.className='key wide go'; go.textContent='SET'; go.onclick=commitLen; kp.appendChild(go);
+}
+function commitLen(){
+  const b=boardById(state.selectedId); if(!b){closeSheet($('lenSheet'));return;}
+  const n=Math.max(1, Math.round((parseFloat(lenBuf||'0')||b.len)*8)/8);
+  snapshot(); b.len=n; rebuildMesh(b); setSelectedVisual(); save(); refreshSelBar(); closeSheet($('lenSheet')); toast('LENGTH · '+inToFtIn(n)); updateGhostFrom(b);
+}
+
+// ---- grid chip cycles ----
+const GRID_CYCLE=[0.5,1,3,6,0]; const GRID_LBL={0.5:'½"',1:'1"',3:'3"',6:'6"',0:'OFF'};
+$('gridChip').onclick=()=>{ const i=GRID_CYCLE.indexOf(state.grid); state.grid=GRID_CYCLE[(i+1)%GRID_CYCLE.length]; $('gridVal').textContent=GRID_LBL[state.grid]; save(); };
+
+/* ============================================================
+   CUT LIST + OPTIMIZATION
+   ============================================================ */
+function boardFeet(sku,lenIn){ const c=CATALOG[sku]; return (c.nomT*c.nomW*(lenIn/12))/12; }
+
+// First-Fit-Decreasing 1D bin packing for one sku's required cut lengths
+function optimize(lengths, stockLen){
+  const pieces=[...lengths].sort((a,b)=>b-a);
+  const bins=[]; // {rem, cuts:[]}
+  const usable=stockLen-2*TRIM;
+  for(const p of pieces){
+    if(p>usable){ bins.push({rem:0, cuts:[p], over:true}); continue; }
+    let placed=false;
+    for(const bin of bins){ if(bin.rem>=p){ bin.cuts.push(p); bin.rem-=(p+KERF); placed=true; break; } }
+    if(!placed){ bins.push({rem:usable-p-KERF, cuts:[p]}); }
+  }
+  return bins;
+}
+
+function buildCutList(){
+  const body=$('cutBody');
+  if(!state.boards.length){ body.innerHTML='<div class="empty">No lumber yet.<br>Tap ADD to start building.</div>'; return; }
+
+  // group identical sku+species+len
+  const groups={};
+  for(const b of state.boards){ const k=b.sku+'|'+b.species+'|'+b.len; (groups[k]=groups[k]||{sku:b.sku,species:b.species,len:b.len,qty:0}); groups[k].qty++; }
+  const rows=Object.values(groups).sort((a,b)=> a.sku.localeCompare(b.sku)||b.len-a.len);
+
+  // stock length selector state
+  const stockSel = window._stockLen||96;
+
+  let html='';
+  // PARTS TABLE
+  html+='<table><thead><tr><th>PART</th><th class="num">LEN</th><th class="num">QTY</th><th class="num">BD FT</th></tr></thead><tbody>';
+  let totalBF=0, totalLF=0;
+  for(const r of rows){
+    const bf=boardFeet(r.sku,r.len)*r.qty; totalBF+=bf; totalLF+=(r.len/12)*r.qty;
+    html+=`<tr><td><span class="sk">${CATALOG[r.sku].nm}</span> <span style="color:var(--ink-3)">${r.species}</span></td>
+      <td class="num">${inToFtIn(r.len)}</td><td class="num">${r.qty}</td><td class="num">${bf.toFixed(2)}</td></tr>`;
+  }
+  html+='</tbody></table>';
+
+  // BUY SUMMARY + optimization per sku+species
+  html+='<div class="sech">BUY LIST · OPTIMIZED</div>';
+  html+=`<div class="cutsel"><div class="field"><label>STOCK LENGTH</label>
+    <select id="stockSel">${STOCK_LENGTHS.map(L=>`<option value="${L}" ${L===stockSel?'selected':''}>${L/12}' (${L}")</option>`).join('')}</select></div>
+    <div class="field"><label>KERF</label><input value="${KERF}″" disabled style="width:60px"></div>
+    <div class="field"><label>TRIM/END</label><input value="${TRIM}″" disabled style="width:60px"></div></div>`;
+
+  // regroup by sku+species for buying (mix lengths)
+  const buyGroups={};
+  for(const b of state.boards){ const k=b.sku+'|'+b.species; (buyGroups[k]=buyGroups[k]||{sku:b.sku,species:b.species,lengths:[]}).lengths.push(b.len); }
+  let grandCost=0, grandBoards=0;
+  for(const g of Object.values(buyGroups)){
+    const stock = Math.max(stockSel, Math.ceil(Math.max(...g.lengths)));
+    const useStock = STOCK_LENGTHS.includes(stockSel)&&stockSel>=Math.max(...g.lengths) ? stockSel : (STOCK_LENGTHS.find(L=>L>=Math.max(...g.lengths))||Math.max(...g.lengths));
+    const bins=optimize(g.lengths, useStock);
+    const nBoards=bins.length; grandBoards+=nBoards;
+    const price=(PRICE[g.species]&&PRICE[g.species][g.sku])||0;
+    const cost=nBoards*(useStock/12)*price; grandCost+=cost;
+    const totalCut=g.lengths.reduce((a,b)=>a+b,0);
+    const yield_=(totalCut/(nBoards*useStock))*100;
+    html+=`<div class="buy">
+      <div class="buyrow"><span class="k">${CATALOG[g.sku].nm} ${g.species}</span><span class="v">${nBoards} × ${useStock/12}'</span></div>
+      <div class="buyrow"><span class="k">Pieces / yield</span><span class="v">${g.lengths.length} · ${yield_.toFixed(0)}%</span></div>
+      <div class="buyrow"><span class="k">Est. cost @ $${price.toFixed(2)}/ft</span><span class="v">$${cost.toFixed(2)}</span></div>
+      <div class="diagram">${bins.map(bin=>diagramStick(bin,useStock)).join('')}</div>
+    </div>`;
+  }
+
+  html+='<div class="buy" style="margin-top:14px">';
+  html+=`<div class="buyrow"><span class="k">Total board feet</span><span class="v">${totalBF.toFixed(2)} BF</span></div>`;
+  html+=`<div class="buyrow"><span class="k">Total linear feet</span><span class="v">${totalLF.toFixed(1)} LF</span></div>`;
+  html+=`<div class="buyrow"><span class="k">Boards to buy</span><span class="v">${grandBoards}</span></div>`;
+  html+=`<div class="buyrow big"><span class="k">Estimated material</span><span class="v">$${grandCost.toFixed(2)}</span></div>`;
+  html+='</div>';
+
+  html+=`<div class="exprow"><button class="exp" id="csvBtn">EXPORT CSV</button><button class="exp" id="printBtn">PRINT</button></div>`;
+  html+=`<div style="text-align:center;font-size:10px;color:var(--ink-3);margin-top:14px;font-weight:500;line-height:1.5">
+    Estimates use nominal board-foot convention. Actual yard sizes & prices vary —<br>buy 10–15% over. Plan figures only.</div>`;
+
+  body.innerHTML=html;
+  const ss=$('stockSel'); if(ss) ss.onchange=()=>{ window._stockLen=parseInt(ss.value); buildCutList(); };
+  if($('csvBtn')) $('csvBtn').onclick=()=>exportCSV(rows,buyGroups);
+  if($('printBtn')) $('printBtn').onclick=()=>window.print();
+}
+function diagramStick(bin,stock){
+  let segs='';
+  const used=bin.cuts.reduce((a,c)=>a+c,0);
+  for(const cut of bin.cuts){ const pct=(cut/stock)*100; segs+=`<div class="seg" style="width:${pct}%;background:var(--accent)">${inToFtIn(cut)}</div>`; }
+  const wastePct=Math.max(0,((stock-used)/stock)*100);
+  if(wastePct>1) segs+=`<div class="seg waste" style="width:${wastePct}%">${inToFtIn(stock-used)}</div>`;
+  return `<div class="stick">${segs}</div>`;
+}
+function exportCSV(rows,buyGroups){
+  let csv='LUMBR CUT LIST\n\nPART,SPECIES,LENGTH (in),QTY,BOARD FEET\n';
+  for(const r of rows){ csv+=`${CATALOG[r.sku].nm},${r.species},${r.len},${r.qty},${(boardFeet(r.sku,r.len)*r.qty).toFixed(2)}\n`; }
+  csv+='\nBUY LIST\nPART,SPECIES,STOCK LENGTH (ft),BOARDS,EST COST\n';
+  const stockSel=window._stockLen||96;
+  for(const g of Object.values(buyGroups)){
+    const useStock=STOCK_LENGTHS.includes(stockSel)&&stockSel>=Math.max(...g.lengths)?stockSel:(STOCK_LENGTHS.find(L=>L>=Math.max(...g.lengths))||Math.max(...g.lengths));
+    const bins=optimize(g.lengths,useStock); const price=(PRICE[g.species]&&PRICE[g.species][g.sku])||0;
+    csv+=`${CATALOG[g.sku].nm},${g.species},${useStock/12},${bins.length},${(bins.length*(useStock/12)*price).toFixed(2)}\n`;
+  }
+  downloadFile('lumbr-cutlist.csv', csv, 'text/csv');
+  toast('CSV EXPORTED');
+}
+$('cutBtn').onclick=()=>{ buildCutList(); openSheet('cutSheet'); };
+
+/* ---------- settings ---------- */
+$('settingsChip').onclick=()=>{ syncSettings(); openSheet('setSheet'); };
+function syncSettings(){
+  document.querySelectorAll('#gridSeg button').forEach(b=>b.classList.toggle('on',parseFloat(b.dataset.g)===state.grid));
+  document.querySelectorAll('#ocSeg button').forEach(b=>b.classList.toggle('on',parseFloat(b.dataset.oc)===state.oc));
+  document.querySelectorAll('#specSeg button').forEach(b=>b.classList.toggle('on',b.dataset.s===state.species));
+  $('ghostToggle').classList.toggle('on',state.ghosts);
+}
+document.querySelectorAll('#gridSeg button').forEach(b=>b.onclick=()=>{state.grid=parseFloat(b.dataset.g);$('gridVal').textContent=GRID_LBL[state.grid]||state.grid+'"';syncSettings();save();});
+document.querySelectorAll('#ocSeg button').forEach(b=>b.onclick=()=>{state.oc=parseFloat(b.dataset.oc);syncSettings();save();});
+document.querySelectorAll('#specSeg button').forEach(b=>b.onclick=()=>{state.species=b.dataset.s;syncSettings();save();});
+$('ghostToggle').onclick=()=>{ state.ghosts=!state.ghosts; syncSettings(); save(); if(state.ghosts)updateGhost(); else clearGhosts(); };
+$('clearBtn').onclick=()=>{ if(!state.boards.length){closeSheet($('setSheet'));return;} snapshot(); meshes.forEach(m=>{boardGroup.remove(m);disposeMesh(m);}); meshes.clear(); state.boards=[]; select(null); clearGhosts(); save(); closeSheet($('setSheet')); toast('SCENE CLEARED'); };
+
+// export / import project
+$('expProj').onclick=()=>{ downloadFile('lumbr-project.json', JSON.stringify({boards:state.boards,nextId},null,2),'application/json'); toast('PROJECT EXPORTED'); };
+$('impProj').onclick=()=>$('fileIn').click();
+$('fileIn').onchange=e=>{ const f=e.target.files[0]; if(!f)return; const r=new FileReader();
+  r.onload=()=>{ try{ const d=JSON.parse(r.result); if(d.boards){ snapshot(); meshes.forEach(m=>{boardGroup.remove(m);disposeMesh(m);}); meshes.clear();
+    state.boards=d.boards; nextId=d.nextId||(Math.max(0,...d.boards.map(b=>b.id))+1); state.boards.forEach(b=>{if(!b.species)b.species='SPF';makeMesh(b);});
+    select(null); save(); closeSheet($('setSheet')); toast('PROJECT IMPORTED'); } }catch(err){ toast('IMPORT FAILED'); } };
+  r.readAsText(f); e.target.value=''; };
+
+function downloadFile(name,content,type){ const blob=new Blob([content],{type}); const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000); }
+
+$('placeRowBtn').onclick=placeWholeRow;
+$('undoBtn').onclick=undo; $('redoBtn').onclick=redo;
+
+/* ---------- WebGL context-loss safety ---------- */
+renderer.domElement.addEventListener('webglcontextlost', e=>{ e.preventDefault(); toast('GL CONTEXT LOST · RESTORING'); }, false);
+renderer.domElement.addEventListener('webglcontextrestored', ()=>{ state.boards.forEach(b=>rebuildMesh(b)); setSelectedVisual(); }, false);
+
+/* ---------- resize (debounced) ---------- */
+let rT;
+addEventListener('resize',()=>{ clearTimeout(rT); rT=setTimeout(()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); renderer.setPixelRatio(Math.min(devicePixelRatio,2)); },150); });
+
+/* ---------- render loop ---------- */
+let pulse=0;
+function animate(){
+  requestAnimationFrame(animate);
+  controls.update();
+  // gentle ghost pulse
+  if(ghostGroup.children.length){ pulse+=0.05; const o=0.30+Math.sin(pulse)*0.12; const first=ghostGroup.children[0]; if(first&&first.material)first.material.opacity=o; }
+  renderer.render(scene,camera);
+}
+
+/* ---------- boot ---------- */
+$('gridVal').textContent=GRID_LBL[state.grid]||state.grid+'"';
+load();
+setSelectedVisual();
+updateUndoButtons();
+animate();
+
+// first-run seed: a starter bottom plate so ghosts have something to suggest from
+if(!state.boards.length){
+  const b=freshBoard('2x4',96,{x:0,y:CATALOG['2x4'].t/2,z:0},{x:0,y:0,z:0});
+  state.boards.push(b); makeMesh(b); save();
+  setTimeout(()=>{ toast('TAP THE GHOST TO PLACE THE NEXT PIECE'); select(b.id); updateGhostFrom(b); },600);
+}
+</script>
+</body>
+</html>
